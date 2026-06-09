@@ -1,0 +1,92 @@
+services:
+  weston:
+    image: torizon/weston-sl1680:stable-rc
+    environment:
+      - ACCEPT_FSL_EULA=1
+    # Required to get udev events from host udevd via netlink
+    network_mode: host
+    restart: always
+    cap_add:
+      - CAP_SYS_TTY_CONFIG
+    volumes:
+      - '/dev:/dev'
+      - '/tmp:/tmp'
+      - '/run/udev/:/run/udev/'
+    # Add device access rights through cgroup...
+    device_cgroup_rules:
+      # ... for tty
+      - "c 4:* rmw"
+      # ... for /dev/input devices
+      - "c 13:* rmw"
+      # ... for /dev/dri devices
+      - "c 226:* rmw"
+      # ... for /dev/uinput
+      - "c 10:223 rmw"
+    healthcheck:
+      test: ["CMD", "test", "-S", "/tmp/1000-runtime-dir/wayland-0"]
+      interval: 5s
+      timeout: 4s
+      retries: 6
+      start_period: 10s
+
+  demo:
+    image: lbornia/luna-dual-cameras:latest
+    network_mode: host
+    privileged: true
+    restart: on-failure
+    environment:
+      XDG_RUNTIME_DIR: "/tmp/1000-runtime-dir"
+      WAYLAND_DISPLAY: "wayland-0"
+      QT_QPA_PLATFORM: "wayland"
+    volumes:
+      - '/dev:/dev'
+      - '/tmp:/tmp'
+      - '/run/udev:/run/udev'
+    device_cgroup_rules:
+      # ... for tty
+      - "c 4:* rmw"
+      # ... for /dev/input devices
+      - "c 13:* rmw"
+      # ... for /dev/dri devices
+      - "c 226:* rmw"
+      # ... for /dev/dma_heap device
+      - "c 253:* rmw"
+    depends_on:
+      weston:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/ws-ready"]
+      interval: 3s
+      timeout: 2s
+      retries: 20
+      start_period: 5s
+
+  chromium:
+    image: torizon/chromium-sl1680:stable-rc
+    network_mode: host
+    restart: always
+    depends_on:
+      demo:
+        condition: service_healthy
+    command: http://127.0.0.1
+    security_opt:
+    - seccomp:unconfined
+    shm_size: 256mb
+    volumes:
+      - '/tmp:/tmp'
+      - '/var/run/dbus:/var/run/dbus'
+      - '/dev/dri:/dev/dri'
+    device_cgroup_rules:
+      # ... for tty
+      - "c 4:* rmw"
+      # ... for /dev/input devices
+      - "c 13:* rmw"
+      # ... for /dev/dri devices
+      - "c 226:* rmw"
+      # ... for /dev/uinput
+      - "c 10:223 rmw"
+
+      # ... for chromium
+      - "c 81:* rmw"
+      - "c 234:* rmw"
+      - "c 235:* rmw"
